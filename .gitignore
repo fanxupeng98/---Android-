@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local config
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Build outputs
+*.apk
+*.aab
+app/build/
+app/debug/
+
+# OS
+.DS_Store
+Thumbs.db
