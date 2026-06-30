@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.novelreader.app.domain.model.BookSource
+import java.io.InputStreamReader
+import java.nio.charset.StandardCharsets
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,62 +35,268 @@ fun SourceScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var showImportDialog by remember { mutableStateOf(false) }
-    var showExportDialog by remember { mutableStateOf(false) }
-    var exportSourceId by remember { mutableStateOf<Long?>(null) }
     
-    // Import Dialog
-    if (showImportDialog) {
+    // 导入对话框状态
+    var showImportUrlDialog by remember { mutableStateOf(false) }
+    var showImportJsonDialog by remember { mutableStateOf(false) }
+    var importUrl by remember { mutableStateOf("") }
+    var localJsonContent by remember { mutableStateOf("") }
+    var isImporting by remember { mutableStateOf(false) }
+    var importError by remember { mutableStateOf<String?>(null) }
+    
+    // 批量导入结果
+    var importSources by remember { mutableStateOf<List<BookSource>>(emptyList()) }
+    var showBatchImportDialog by remember { mutableStateOf(false) }
+    var selectedSources by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    
+    // 导出对话框
+    var showExportDialog by remember { mutableStateOf(false) }
+    
+    // 文件选择器
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            try {
+                context.contentResolver.openInputStream(it)?.use { inputStream ->
+                    val content = InputStreamReader(inputStream, StandardCharsets.UTF_8).readText()
+                    localJsonContent = content
+                    showImportJsonDialog = true
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "读取文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    // URL 导入对话框
+    if (showImportUrlDialog) {
         AlertDialog(
-            onDismissRequest = { showImportDialog = false },
-            title = { Text("导入书源") },
+            onDismissRequest = { 
+                showImportUrlDialog = false
+                importUrl = ""
+                importError = null
+            },
+            title = { Text("网络导入") },
             text = {
                 Column {
                     OutlinedTextField(
-                        value = uiState.importText,
-                        onValueChange = { viewModel.updateImportText(it) },
-                        placeholder = { Text("粘贴 Base64 书源文本") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp),
-                        maxLines = 10
+                        value = importUrl,
+                        onValueChange = { 
+                            importUrl = it
+                            importError = null
+                        },
+                        placeholder = { Text("请输入书源 JSON 的 URL 地址") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Text(
-                        "支持 Base64 编码的书源文本",
+                        "支持书小页/阅读 Paper 等书源格式",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
                     
-                    uiState.importError?.let { error ->
+                    importError?.let { error ->
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(error, color = MaterialTheme.colorScheme.error)
                     }
                     
-                    uiState.importSuccess?.let { success ->
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(success, color = MaterialTheme.colorScheme.primary)
+                    if (isImporting) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    viewModel.importSource()
-                }) {
+                Button(
+                    onClick = {
+                        if (importUrl.isBlank()) {
+                            importError = "请输入 URL"
+                            return@Button
+                        }
+                        isImporting = true
+                        importError = null
+                        viewModel.importFromUrl(importUrl) { success, sources, errorMsg ->
+                            isImporting = false
+                            if (success && sources.isNotEmpty()) {
+                                importSources = sources
+                                selectedSources = sources.indices.toSet()
+                                showBatchImportDialog = true
+                                showImportUrlDialog = false
+                                importUrl = ""
+                            } else {
+                                importError = errorMsg ?: "导入失败"
+                            }
+                        }
+                    },
+                    enabled = !isImporting
+                ) {
                     Text("导入")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
+                TextButton(onClick = { 
+                    showImportUrlDialog = false
+                    importUrl = ""
+                    importError = null
+                }) {
                     Text("取消")
                 }
             }
         )
     }
     
-    // Export Dialog
+    // 本地 JSON 导入对话框
+    if (showImportJsonDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showImportJsonDialog = false
+                localJsonContent = ""
+                importError = null
+            },
+            title = { Text("本地 JSON 导入") },
+            text = {
+                Column {
+                    if (localJsonContent.isNotEmpty()) {
+                        Text(
+                            "已加载 ${localJsonContent.length} 字符的书源配置",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    
+                    Text(
+                        "支持单个书源或批量书源数组（snake_case / camelCase 均兼容）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    
+                    importError?.let { error ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(error, color = MaterialTheme.colorScheme.error)
+                    }
+                    
+                    if (isImporting) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isImporting = true
+                        importError = null
+                        viewModel.importFromLocalJson(localJsonContent) { success, sources, errorMsg ->
+                            isImporting = false
+                            if (success && sources.isNotEmpty()) {
+                                importSources = sources
+                                selectedSources = sources.indices.toSet()
+                                showBatchImportDialog = true
+                                showImportJsonDialog = false
+                                localJsonContent = ""
+                            } else {
+                                importError = errorMsg ?: "导入失败"
+                            }
+                        }
+                    },
+                    enabled = !isImporting && localJsonContent.isNotEmpty()
+                ) {
+                    Text("解析")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showImportJsonDialog = false
+                    localJsonContent = ""
+                    importError = null
+                }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+    
+    // 批量导入确认对话框
+    if (showBatchImportDialog && importSources.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { 
+                showBatchImportDialog = false
+                importSources = emptyList()
+                selectedSources = emptySet()
+            },
+            title = { Text("确认导入 (${selectedSources.size}/${importSources.size})") },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 400.dp)
+                ) {
+                    items(importSources.size) { index ->
+                        val source = importSources[index]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = index in selectedSources,
+                                onCheckedChange = { checked ->
+                                    selectedSources = if (checked) {
+                                        selectedSources + index
+                                    } else {
+                                        selectedSources - index
+                                    }
+                                }
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = source.name,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = source.baseUrl,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toImport = importSources.filterIndexed { index, _ -> index in selectedSources }
+                        viewModel.batchImportSources(toImport) { count ->
+                            Toast.makeText(context, "成功导入 $count 个书源", Toast.LENGTH_SHORT).show()
+                            showBatchImportDialog = false
+                            importSources = emptyList()
+                            selectedSources = emptySet()
+                        }
+                    },
+                    enabled = selectedSources.isNotEmpty()
+                ) {
+                    Text("导入选中 (${selectedSources.size})")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showBatchImportDialog = false
+                    importSources = emptyList()
+                    selectedSources = emptySet()
+                }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+    
+    // 导出对话框
     if (showExportDialog && uiState.exportText != null) {
         AlertDialog(
             onDismissRequest = {
@@ -148,11 +358,33 @@ fun SourceScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showImportDialog = true }) {
-                        Icon(Icons.Default.Download, contentDescription = "导入")
+                    // 导入菜单
+                    var showImportMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showImportMenu = true }) {
+                        Icon(Icons.Default.FileDownload, contentDescription = "导入")
+                    }
+                    DropdownMenu(
+                        expanded = showImportMenu,
+                        onDismissRequest = { showImportMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("📡 网络导入") },
+                            onClick = {
+                                showImportMenu = false
+                                showImportUrlDialog = true
+                            },
+                            leadingIcon = { Icon(Icons.Default.Link, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("📁 本地导入") },
+                            onClick = {
+                                showImportMenu = false
+                                filePickerLauncher.launch("application/json")
+                            },
+                            leadingIcon = { Icon(Icons.Default.FolderOpen, null) }
+                        )
                     }
                 },
-                // Android 16: 透明状态栏背景
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent
                 )
@@ -172,14 +404,21 @@ fun SourceScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                onImport = { showImportDialog = true }
+                onAddSource = onAddSource,
+                onImportUrl = { showImportUrlDialog = true },
+                onImportFile = { filePickerLauncher.launch("application/json") }
             )
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = 96.dp
+                ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(uiState.sources, key = { it.id }) { source ->
@@ -189,7 +428,6 @@ fun SourceScreen(
                         onEdit = { onEditSource(source.id) },
                         onDelete = { viewModel.deleteSource(source.id) },
                         onExport = {
-                            exportSourceId = source.id
                             viewModel.exportSource(source.id)
                             showExportDialog = true
                         }
@@ -218,28 +456,27 @@ private fun SourceItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 启用开关
             Switch(
                 checked = source.enabled,
                 onCheckedChange = { onToggle() }
             )
             
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = source.name,
-                    style = MaterialTheme.typography.titleMedium
+                    text = source.name.ifBlank { "未命名书源" },
+                    style = MaterialTheme.typography.titleSmall
                 )
                 
                 if (source.group.isNotBlank()) {
                     Text(
                         text = source.group,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
                 
@@ -299,7 +536,9 @@ private fun SourceItem(
 @Composable
 private fun EmptySourceList(
     modifier: Modifier = Modifier,
-    onImport: () -> Unit
+    onAddSource: () -> Unit,
+    onImportUrl: () -> Unit,
+    onImportFile: () -> Unit
 ) {
     Column(
         modifier = modifier,
@@ -321,27 +560,40 @@ private fun EmptySourceList(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text(
-            text = "添加书源以开始阅读",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.outline
-        )
-        
         Spacer(modifier = Modifier.height(24.dp))
         
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            OutlinedButton(onClick = onImport) {
-                Icon(Icons.Default.Download, null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("导入书源")
+        // 直接显示两个导入按钮
+        Button(
+            onClick = onAddSource,
+            modifier = Modifier.fillMaxWidth(0.7f)
+        ) {
+            Icon(Icons.Default.Add, null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("手动添加书源")
+        }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(0.8f),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onImportUrl,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Default.Link, null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("网络")
             }
             
-            Button(onClick = onImport) {
-                Icon(Icons.Default.Add, null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("手动添加")
+            OutlinedButton(
+                onClick = onImportFile,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("本地")
             }
         }
     }
