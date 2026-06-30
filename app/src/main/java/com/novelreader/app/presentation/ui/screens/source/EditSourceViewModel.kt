@@ -4,6 +4,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.novelreader.app.domain.model.BookSource
+import com.novelreader.app.domain.model.RuleBookInfo
+import com.novelreader.app.domain.model.RuleContent
+import com.novelreader.app.domain.model.RuleSearch
+import com.novelreader.app.domain.model.RuleToc
 import com.novelreader.app.domain.repository.BookSourceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,17 +42,21 @@ class EditSourceViewModel @Inject constructor(
                     name = source.name,
                     baseUrl = source.baseUrl,
                     group = source.group,
+                    type = source.type,
                     searchUrl = source.searchUrl,
-                    searchNameRule = source.searchNameRule,
-                    searchAuthorRule = source.searchAuthorRule,
-                    searchDetailUrlRule = source.searchDetailUrlRule,
-                    bookNameRule = source.bookNameRule,
-                    bookAuthorRule = source.bookAuthorRule,
-                    coverUrlRule = source.coverUrlRule,
-                    introRule = source.introRule,
-                    chapterListRule = source.chapterListRule,
-                    chapterNameRule = source.chapterNameRule,
-                    contentRule = source.contentRule
+                    exploreUrl = source.exploreUrl,
+                    searchBookList = source.ruleSearch?.bookList ?: "",
+                    searchName = source.ruleSearch?.name ?: "",
+                    searchAuthor = source.ruleSearch?.author ?: "",
+                    searchBookUrl = source.ruleSearch?.bookUrl ?: "",
+                    bookName = source.ruleBookInfo?.name ?: "",
+                    bookAuthor = source.ruleBookInfo?.author ?: "",
+                    bookCoverUrl = source.ruleBookInfo?.coverUrl ?: "",
+                    bookIntro = source.ruleBookInfo?.intro ?: "",
+                    tocChapterList = source.ruleToc?.chapterList ?: "",
+                    tocChapterName = source.ruleToc?.chapterName ?: "",
+                    tocChapterUrl = source.ruleToc?.chapterUrl ?: "",
+                    content = source.ruleContent?.content ?: ""
                 )
             }
         }
@@ -66,48 +74,64 @@ class EditSourceViewModel @Inject constructor(
         _formState.value = _formState.value.copy(group = value)
     }
     
+    fun updateType(value: Int) {
+        _formState.value = _formState.value.copy(type = value)
+    }
+    
     fun updateSearchUrl(value: String) {
         _formState.value = _formState.value.copy(searchUrl = value)
     }
     
-    fun updateSearchNameRule(value: String) {
-        _formState.value = _formState.value.copy(searchNameRule = value)
+    fun updateExploreUrl(value: String) {
+        _formState.value = _formState.value.copy(exploreUrl = value)
     }
     
-    fun updateSearchAuthorRule(value: String) {
-        _formState.value = _formState.value.copy(searchAuthorRule = value)
+    fun updateSearchBookList(value: String) {
+        _formState.value = _formState.value.copy(searchBookList = value)
     }
     
-    fun updateSearchDetailUrlRule(value: String) {
-        _formState.value = _formState.value.copy(searchDetailUrlRule = value)
+    fun updateSearchName(value: String) {
+        _formState.value = _formState.value.copy(searchName = value)
     }
     
-    fun updateBookNameRule(value: String) {
-        _formState.value = _formState.value.copy(bookNameRule = value)
+    fun updateSearchAuthor(value: String) {
+        _formState.value = _formState.value.copy(searchAuthor = value)
     }
     
-    fun updateBookAuthorRule(value: String) {
-        _formState.value = _formState.value.copy(bookAuthorRule = value)
+    fun updateSearchBookUrl(value: String) {
+        _formState.value = _formState.value.copy(searchBookUrl = value)
     }
     
-    fun updateCoverUrlRule(value: String) {
-        _formState.value = _formState.value.copy(coverUrlRule = value)
+    fun updateBookName(value: String) {
+        _formState.value = _formState.value.copy(bookName = value)
     }
     
-    fun updateIntroRule(value: String) {
-        _formState.value = _formState.value.copy(introRule = value)
+    fun updateBookAuthor(value: String) {
+        _formState.value = _formState.value.copy(bookAuthor = value)
     }
     
-    fun updateChapterListRule(value: String) {
-        _formState.value = _formState.value.copy(chapterListRule = value)
+    fun updateBookCoverUrl(value: String) {
+        _formState.value = _formState.value.copy(bookCoverUrl = value)
     }
     
-    fun updateChapterNameRule(value: String) {
-        _formState.value = _formState.value.copy(chapterNameRule = value)
+    fun updateBookIntro(value: String) {
+        _formState.value = _formState.value.copy(bookIntro = value)
     }
     
-    fun updateContentRule(value: String) {
-        _formState.value = _formState.value.copy(contentRule = value)
+    fun updateTocChapterList(value: String) {
+        _formState.value = _formState.value.copy(tocChapterList = value)
+    }
+    
+    fun updateTocChapterName(value: String) {
+        _formState.value = _formState.value.copy(tocChapterName = value)
+    }
+    
+    fun updateTocChapterUrl(value: String) {
+        _formState.value = _formState.value.copy(tocChapterUrl = value)
+    }
+    
+    fun updateContent(value: String) {
+        _formState.value = _formState.value.copy(content = value)
     }
     
     fun saveSource() {
@@ -131,17 +155,35 @@ class EditSourceViewModel @Inject constructor(
                     name = state.name,
                     baseUrl = state.baseUrl,
                     group = state.group,
+                    type = state.type,
                     searchUrl = state.searchUrl,
-                    searchNameRule = state.searchNameRule,
-                    searchAuthorRule = state.searchAuthorRule,
-                    searchDetailUrlRule = state.searchDetailUrlRule,
-                    bookNameRule = state.bookNameRule,
-                    bookAuthorRule = state.bookAuthorRule,
-                    coverUrlRule = state.coverUrlRule,
-                    introRule = state.introRule,
-                    chapterListRule = state.chapterListRule,
-                    chapterNameRule = state.chapterNameRule,
-                    contentRule = state.contentRule
+                    exploreUrl = state.exploreUrl,
+                    ruleSearch = if (state.searchName.isNotBlank() || state.searchBookList.isNotBlank()) {
+                        RuleSearch(
+                            bookList = state.searchBookList,
+                            name = state.searchName,
+                            author = state.searchAuthor,
+                            bookUrl = state.searchBookUrl
+                        )
+                    } else null,
+                    ruleBookInfo = if (state.bookName.isNotBlank()) {
+                        RuleBookInfo(
+                            name = state.bookName,
+                            author = state.bookAuthor,
+                            coverUrl = state.bookCoverUrl,
+                            intro = state.bookIntro
+                        )
+                    } else null,
+                    ruleToc = if (state.tocChapterList.isNotBlank()) {
+                        RuleToc(
+                            chapterList = state.tocChapterList,
+                            chapterName = state.tocChapterName,
+                            chapterUrl = state.tocChapterUrl
+                        )
+                    } else null,
+                    ruleContent = if (state.content.isNotBlank()) {
+                        RuleContent(content = state.content)
+                    } else null
                 )
                 
                 bookSourceRepository.updateSource(source)

@@ -35,6 +35,7 @@ class BookParser @Inject constructor(
      */
     private fun buildSearchUrl(searchUrlTemplate: String, keyword: String): String {
         return searchUrlTemplate
+            .replace("{{key}}", java.net.URLEncoder.encode(keyword, "UTF-8"))
             .replace("{keyword}", java.net.URLEncoder.encode(keyword, "UTF-8"))
             .replace("{keywordEncoded}", java.net.URLEncoder.encode(keyword, "UTF-8"))
     }
@@ -44,44 +45,54 @@ class BookParser @Inject constructor(
      */
     private fun parseSearchResults(doc: Document, source: BookSource): List<SearchResult> {
         val results = mutableListOf<SearchResult>()
+        val ruleSearch = source.ruleSearch
         
         try {
-            // 通用选择器尝试
-            val selectors = listOf(
-                source.searchNameRule,
-                ".book-name", ".bookname", "h3 a", ".title a",
+            // 优先使用书源规则
+            val bookListSelector = ruleSearch?.bookList
+            val nameSelector = ruleSearch?.name
+            val authorSelector = ruleSearch?.author
+            val bookUrlSelector = ruleSearch?.bookUrl
+            
+            // 通用选择器兜底
+            val selectors = listOfNotNull(
+                bookListSelector,
                 ".book-list li", ".bookitem", ".search-list li",
-                ".result-item", ".novel-item"
-            )
+                ".result-item", ".novel-item", ".book-name", ".bookname"
+            ).filter { it.isNotBlank() }
             
             val elements = findElements(doc, selectors)
             
             for ((index, element) in elements.withIndex()) {
-                val name = extractText(element, source.searchNameRule)
-                    ?: element.selectFirst("a")?.text()
-                    ?: element.selectFirst("h3, .name, .title")?.text()
-                    ?: continue
+                // 书名
+                val name = when {
+                    nameSelector?.isNotBlank() == true -> extractText(element, nameSelector)
+                    else -> element.selectFirst("a")?.text()
+                        ?: element.selectFirst("h3, .name, .title")?.text()
+                }?.takeIf { it.isNotBlank() } ?: continue
                 
-                val author = extractText(element, source.searchAuthorRule)
-                    ?: element.selectFirst(".author, .writer")?.text()
-                    ?: ""
+                // 作者
+                val author = when {
+                    authorSelector?.isNotBlank() == true -> extractText(element, authorSelector)
+                    else -> element.selectFirst(".author, .writer")?.text()
+                } ?: ""
                 
-                val detailUrl = extractAttr(element, source.searchDetailUrlRule, "href")
-                    ?: element.selectFirst("a")?.attr("href")
-                    ?: ""
+                // 详情链接
+                val detailUrl = when {
+                    bookUrlSelector?.isNotBlank() == true -> extractAttr(element, bookUrlSelector, "href")
+                    else -> element.selectFirst("a")?.attr("href")
+                }?.takeIf { it.isNotBlank() } ?: continue
                 
-                if (name.isNotBlank() && detailUrl.isNotBlank()) {
-                    val fullUrl = if (detailUrl.startsWith("http")) detailUrl 
-                        else "${source.baseUrl.removeSuffix("/")}/$detailUrl"
-                    
-                    results.add(SearchResult(
-                        name = name.trim(),
-                        author = author.trim(),
-                        detailUrl = fullUrl,
-                        sourceName = source.name,
-                        sourceId = source.id
-                    ))
-                }
+                val fullUrl = if (detailUrl.startsWith("http")) detailUrl 
+                    else "${source.baseUrl.removeSuffix("/")}/$detailUrl"
+                
+                results.add(SearchResult(
+                    name = name.trim(),
+                    author = author.trim(),
+                    detailUrl = fullUrl,
+                    sourceName = source.name,
+                    sourceId = source.id
+                ))
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -103,20 +114,32 @@ class BookParser @Inject constructor(
     }
     
     private fun parseBookDetail(doc: Document, url: String, source: BookSource): Book {
-        val name = extractText(doc, source.bookNameRule)
-            ?: doc.selectFirst("h1, .book-title, .title")?.text()
+        val ruleBookInfo = source.ruleBookInfo
+        
+        val name = when {
+            ruleBookInfo?.name?.isNotBlank() == true -> extractText(doc, ruleBookInfo.name)
+            else -> null
+        } ?: doc.selectFirst("h1, .book-title, .title")?.text()
             ?: "未知书名"
         
-        val author = extractText(doc, source.bookAuthorRule)
-            ?: doc.selectFirst(".author, .book-author")?.text()
+        val author = when {
+            ruleBookInfo?.author?.isNotBlank() == true -> extractText(doc, ruleBookInfo.author)
+            else -> null
+        } ?: doc.selectFirst(".author, .book-author")?.text()
             ?: "未知作者"
         
-        val coverUrl = extractAttr(doc, source.coverUrlRule, "src")
-            ?: extractAttr(doc, source.coverUrlRule, "data-src")
-            ?: doc.selectFirst("img.cover, .book-cover img")?.attr("src")
+        val coverUrl = when {
+            ruleBookInfo?.coverUrl?.isNotBlank() == true -> {
+                extractAttr(doc, ruleBookInfo.coverUrl, "src")
+                    ?: extractAttr(doc, ruleBookInfo.coverUrl, "data-src")
+            }
+            else -> null
+        } ?: doc.selectFirst("img.cover, .book-cover img")?.attr("src")
         
-        val intro = extractText(doc, source.introRule)
-            ?: doc.selectFirst(".intro, .description, .book-desc")?.text()
+        val intro = when {
+            ruleBookInfo?.intro?.isNotBlank() == true -> extractText(doc, ruleBookInfo.intro)
+            else -> null
+        } ?: doc.selectFirst(".intro, .description, .book-desc")?.text()
         
         return Book(
             name = name.trim(),
@@ -133,18 +156,17 @@ class BookParser @Inject constructor(
      * 获取章节列表
      */
     suspend fun getChapterList(book: Book, source: BookSource): List<Chapter> {
-        if (source.chapterListRule.isBlank() && source.chapterUrlRule.isBlank()) return emptyList()
+        val ruleToc = source.ruleToc
         
         return try {
             // 先尝试直接获取章节列表
-            val listUrl = if (source.chapterUrlRule.isNotBlank()) {
-                "${source.baseUrl.removeSuffix("/")}/${source.chapterUrlRule}"
+            val listUrl = if (ruleToc?.chapterUrl?.isNotBlank() == true) {
+                "${source.baseUrl.removeSuffix("/")}/${ruleToc.chapterUrl}"
             } else {
-                book.detailUrl
+                book.detailUrl ?: return emptyList()
             }
             
-            val listUrlNonNull: String = listUrl ?: return emptyList()
-            val doc = htmlFetcher.fetchDocument(listUrlNonNull).getOrNull() ?: return emptyList()
+            val doc = htmlFetcher.fetchDocument(listUrl).getOrNull() ?: return emptyList()
             parseChapterList(doc, book.id, source)
         } catch (e: Exception) {
             emptyList()
@@ -153,33 +175,37 @@ class BookParser @Inject constructor(
     
     private fun parseChapterList(doc: Document, bookId: Long, source: BookSource): List<Chapter> {
         val chapters = mutableListOf<Chapter>()
+        val ruleToc = source.ruleToc
         
         try {
-            // 尝试多种选择器
-            val listSelector = source.chapterListRule.ifBlank { 
-                ".chapter-list, .chapter-list a, .catalog a, #chapter-list a" 
-            }
+            // 章节列表选择器
+            val listSelector = ruleToc?.chapterList?.takeIf { it.isNotBlank() }
+                ?: ".chapter-list a, .catalog a, #chapter-list a, .chapter-item"
             
             val elements = doc.select(listSelector)
             
             for ((index, element) in elements.withIndex()) {
-                val title = extractText(element, source.chapterNameRule)
-                    ?: element.text()
-                    ?: continue
+                // 章节名
+                val title = when {
+                    ruleToc?.chapterName?.isNotBlank() == true -> extractText(element, ruleToc.chapterName)
+                    else -> element.text()
+                }?.takeIf { it.isNotBlank() } ?: continue
                 
-                var url = extractAttr(element, null, "href")
-                    ?: continue
+                // 章节链接
+                val url = when {
+                    ruleToc?.chapterUrl?.isNotBlank() == true -> extractAttr(element, ruleToc.chapterUrl, "href")
+                    else -> element.attr("href")
+                }?.takeIf { it.isNotBlank() } ?: continue
                 
                 // 补全 URL
-                if (!url.startsWith("http")) {
-                    url = "${source.baseUrl.removeSuffix("/")}/$url"
-                }
+                val fullUrl = if (url.startsWith("http")) url 
+                    else "${source.baseUrl.removeSuffix("/")}/$url"
                 
                 chapters.add(Chapter(
                     bookId = bookId,
                     index = index,
                     title = title.trim(),
-                    url = url
+                    url = fullUrl
                 ))
             }
         } catch (e: Exception) {
@@ -195,18 +221,18 @@ class BookParser @Inject constructor(
     suspend fun getChapterContent(chapter: Chapter, source: BookSource): String? {
         return try {
             val doc = htmlFetcher.fetchDocument(chapter.url).getOrNull() ?: return null
-            extractContent(doc, source.contentRule)
+            extractContent(doc, source.ruleContent?.content)
         } catch (e: Exception) {
             null
         }
     }
     
-    private fun extractContent(doc: Document, contentRule: String): String? {
+    private fun extractContent(doc: Document, contentRule: String?): String? {
         try {
             // 清理无关内容
             doc.select("script, style, .ad, .advertisement, .comment, nav, .nav, .toolbar").remove()
             
-            val content = if (contentRule.isNotBlank()) {
+            val content = if (contentRule?.isNotBlank() == true) {
                 doc.selectFirst(contentRule)?.text()
                     ?: doc.selectFirst("#content, .content, .chapter-content")?.text()
             } else {
@@ -238,17 +264,15 @@ class BookParser @Inject constructor(
         return Elements()
     }
     
-    private fun extractText(element: Element, rule: String?): String? {
-        if (rule.isNullOrBlank()) return null
+    private fun extractText(element: Element, rule: String): String? {
+        if (rule.isBlank()) return null
         return try {
             element.selectFirst(rule)?.text()?.takeIf { it.isNotBlank() }
         } catch (e: Exception) { null }
     }
     
-    private fun extractAttr(element: Element, rule: String?, attr: String): String? {
-        if (rule.isNullOrBlank()) {
-            return element.attr(attr).takeIf { it.isNotBlank() }
-        }
+    private fun extractAttr(element: Element, rule: String, attr: String): String? {
+        if (rule.isBlank()) return null
         return try {
             element.selectFirst(rule)?.attr(attr)?.takeIf { it.isNotBlank() }
         } catch (e: Exception) { null }

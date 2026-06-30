@@ -24,7 +24,9 @@ object DatabaseModule {
             context,
             NovelReaderDatabase::class.java,
             "novel_reader.db"
-        ).build()
+        )
+        .fallbackToDestructiveMigration()
+        .build()
     }
     
     @Provides

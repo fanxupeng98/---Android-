@@ -21,8 +21,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.novelreader.app.presentation.ui.theme.GlassBorderDark
 import com.novelreader.app.presentation.ui.theme.GlassBorderLight
 import com.novelreader.app.presentation.ui.theme.GlassHighlightDark
@@ -209,8 +211,13 @@ private fun GlassNavBarItem(
 
         Text(
             text = item.label,
-            style = MaterialTheme.typography.labelSmall,
-            color = contentColor
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            ),
+            color = contentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

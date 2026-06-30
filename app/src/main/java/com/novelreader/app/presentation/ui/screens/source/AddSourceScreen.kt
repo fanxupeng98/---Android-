@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -117,8 +116,17 @@ fun AddSourceScreen(
             )
 
             OutlinedTextField(
-                value = formState.searchNameRule,
-                onValueChange = { viewModel.updateSearchNameRule(it) },
+                value = formState.searchBookList,
+                onValueChange = { viewModel.updateSearchBookList(it) },
+                label = { Text("书籍列表选择器") },
+                placeholder = { Text(".book-list li") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = formState.searchName,
+                onValueChange = { viewModel.updateSearchName(it) },
                 label = { Text("书名选择器") },
                 placeholder = { Text(".book-name, h3 a") },
                 modifier = Modifier.fillMaxWidth(),
@@ -126,8 +134,8 @@ fun AddSourceScreen(
             )
 
             OutlinedTextField(
-                value = formState.searchAuthorRule,
-                onValueChange = { viewModel.updateSearchAuthorRule(it) },
+                value = formState.searchAuthor,
+                onValueChange = { viewModel.updateSearchAuthor(it) },
                 label = { Text("作者选择器") },
                 placeholder = { Text(".author") },
                 modifier = Modifier.fillMaxWidth(),
@@ -135,8 +143,8 @@ fun AddSourceScreen(
             )
 
             OutlinedTextField(
-                value = formState.searchDetailUrlRule,
-                onValueChange = { viewModel.updateSearchDetailUrlRule(it) },
+                value = formState.searchBookUrl,
+                onValueChange = { viewModel.updateSearchBookUrl(it) },
                 label = { Text("详情页链接选择器") },
                 placeholder = { Text("a") },
                 modifier = Modifier.fillMaxWidth(),
@@ -152,37 +160,33 @@ fun AddSourceScreen(
             )
 
             OutlinedTextField(
-                value = formState.bookNameRule,
-                onValueChange = { viewModel.updateBookNameRule(it) },
+                value = formState.bookName,
+                onValueChange = { viewModel.updateBookName(it) },
                 label = { Text("书名选择器") },
-                placeholder = { Text(".book-title") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
             OutlinedTextField(
-                value = formState.bookAuthorRule,
-                onValueChange = { viewModel.updateBookAuthorRule(it) },
+                value = formState.bookAuthor,
+                onValueChange = { viewModel.updateBookAuthor(it) },
                 label = { Text("作者选择器") },
-                placeholder = { Text(".author") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
             OutlinedTextField(
-                value = formState.coverUrlRule,
-                onValueChange = { viewModel.updateCoverUrlRule(it) },
-                label = { Text("封面URL选择器") },
-                placeholder = { Text("img.cover") },
+                value = formState.bookCoverUrl,
+                onValueChange = { viewModel.updateBookCoverUrl(it) },
+                label = { Text("封面图片选择器") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
             OutlinedTextField(
-                value = formState.introRule,
-                onValueChange = { viewModel.updateIntroRule(it) },
+                value = formState.bookIntro,
+                onValueChange = { viewModel.updateBookIntro(it) },
                 label = { Text("简介选择器") },
-                placeholder = { Text(".intro") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -196,8 +200,8 @@ fun AddSourceScreen(
             )
 
             OutlinedTextField(
-                value = formState.chapterListRule,
-                onValueChange = { viewModel.updateChapterListRule(it) },
+                value = formState.tocChapterList,
+                onValueChange = { viewModel.updateTocChapterList(it) },
                 label = { Text("章节列表选择器") },
                 placeholder = { Text(".chapter-list a") },
                 modifier = Modifier.fillMaxWidth(),
@@ -205,16 +209,24 @@ fun AddSourceScreen(
             )
 
             OutlinedTextField(
-                value = formState.chapterNameRule,
-                onValueChange = { viewModel.updateChapterNameRule(it) },
+                value = formState.tocChapterName,
+                onValueChange = { viewModel.updateTocChapterName(it) },
                 label = { Text("章节名称选择器") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
             OutlinedTextField(
-                value = formState.contentRule,
-                onValueChange = { viewModel.updateContentRule(it) },
+                value = formState.tocChapterUrl,
+                onValueChange = { viewModel.updateTocChapterUrl(it) },
+                label = { Text("章节链接选择器") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = formState.content,
+                onValueChange = { viewModel.updateContent(it) },
                 label = { Text("正文内容选择器") },
                 placeholder = { Text("#content") },
                 modifier = Modifier.fillMaxWidth(),
