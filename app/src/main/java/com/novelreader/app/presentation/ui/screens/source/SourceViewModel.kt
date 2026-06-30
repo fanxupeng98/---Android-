@@ -166,4 +166,19 @@ class SourceViewModel @Inject constructor(
             bookSourceRepository.deleteSource(sourceId)
         }
     }
+    
+    /**
+     * 批量删除书源
+     */
+    fun batchDeleteSources(sourceIds: List<Long>) {
+        viewModelScope.launch {
+            sourceIds.forEach { sourceId ->
+                try {
+                    bookSourceRepository.deleteSource(sourceId)
+                } catch (e: Exception) {
+                    // 单个失败不影响其他
+                }
+            }
+        }
+    }
 }

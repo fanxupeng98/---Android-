@@ -36,6 +36,10 @@ fun SourceScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     
+    // 选择模式状态
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedSourceIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    
     // 导入对话框状态
     var showImportUrlDialog by remember { mutableStateOf(false) }
     var showImportJsonDialog by remember { mutableStateOf(false) }
@@ -350,45 +354,111 @@ fun SourceScreen(
     
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("书源管理") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    // 导入菜单
-                    var showImportMenu by remember { mutableStateOf(false) }
-                    IconButton(onClick = { showImportMenu = true }) {
-                        Icon(Icons.Default.FileDownload, contentDescription = "导入")
-                    }
-                    DropdownMenu(
-                        expanded = showImportMenu,
-                        onDismissRequest = { showImportMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("📡 网络导入") },
+            if (isSelectionMode) {
+                // 选择模式下的 TopBar
+                TopAppBar(
+                    title = { Text("已选 ${selectedSourceIds.size} 个") },
+                    navigationIcon = {
+                        IconButton(onClick = { 
+                            isSelectionMode = false
+                            selectedSourceIds = emptySet()
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "取消")
+                        }
+                    },
+                    actions = {
+                        // 全选/取消全选
+                        IconButton(onClick = {
+                            if (selectedSourceIds.size == uiState.sources.size) {
+                                selectedSourceIds = emptySet()
+                            } else {
+                                selectedSourceIds = uiState.sources.map { it.id }.toSet()
+                            }
+                        }) {
+                            Icon(
+                                if (selectedSourceIds.size == uiState.sources.size) 
+                                    Icons.Default.Deselect 
+                                else 
+                                    Icons.Default.SelectAll,
+                                contentDescription = if (selectedSourceIds.size == uiState.sources.size) "取消全选" else "全选"
+                            )
+                        }
+                        
+                        // 批量删除按钮
+                        IconButton(
                             onClick = {
-                                showImportMenu = false
-                                showImportUrlDialog = true
+                                if (selectedSourceIds.isNotEmpty()) {
+                                    viewModel.batchDeleteSources(selectedSourceIds.toList())
+                                    isSelectionMode = false
+                                    selectedSourceIds = emptySet()
+                                    Toast.makeText(context, "已删除 ${selectedSourceIds.size} 个书源", Toast.LENGTH_SHORT).show()
+                                }
                             },
-                            leadingIcon = { Icon(Icons.Default.Link, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("📁 本地导入") },
-                            onClick = {
-                                showImportMenu = false
-                                filePickerLauncher.launch("application/json")
-                            },
-                            leadingIcon = { Icon(Icons.Default.FolderOpen, null) }
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
+                            enabled = selectedSourceIds.isNotEmpty()
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "删除",
+                                tint = if (selectedSourceIds.isNotEmpty()) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 )
-            )
+            } else {
+                // 普通模式下的 TopBar
+                TopAppBar(
+                    title = { Text("书源管理") },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                        }
+                    },
+                    actions = {
+                        // 导入菜单
+                        var showImportMenu by remember { mutableStateOf(false) }
+                        IconButton(onClick = { showImportMenu = true }) {
+                            Icon(Icons.Default.FileDownload, contentDescription = "导入")
+                        }
+                        DropdownMenu(
+                            expanded = showImportMenu,
+                            onDismissRequest = { showImportMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("📡 网络导入") },
+                                onClick = {
+                                    showImportMenu = false
+                                    showImportUrlDialog = true
+                                },
+                                leadingIcon = { Icon(Icons.Default.Link, null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("📁 本地导入") },
+                                onClick = {
+                                    showImportMenu = false
+                                    filePickerLauncher.launch("application/json")
+                                },
+                                leadingIcon = { Icon(Icons.Default.FolderOpen, null) }
+                            )
+                        }
+                        
+                        // 进入选择模式
+                        if (uiState.sources.isNotEmpty()) {
+                            IconButton(onClick = { isSelectionMode = true }) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = "选择")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
+                )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -424,13 +494,24 @@ fun SourceScreen(
                 items(uiState.sources, key = { it.id }) { source ->
                     SourceItem(
                         source = source,
+                        isSelected = isSelectionMode && source.id in selectedSourceIds,
                         onToggle = { viewModel.toggleSource(source.id, !source.enabled) },
                         onEdit = { onEditSource(source.id) },
                         onDelete = { viewModel.deleteSource(source.id) },
                         onExport = {
                             viewModel.exportSource(source.id)
                             showExportDialog = true
-                        }
+                        },
+                        onSelectionChange = if (isSelectionMode) {
+                            { checked ->
+                                selectedSourceIds = if (checked) {
+                                    selectedSourceIds + source.id
+                                } else {
+                                    selectedSourceIds - source.id
+                                }
+                            }
+                        } else null,
+                        modifier = Modifier
                     )
                 }
             }
@@ -441,17 +522,22 @@ fun SourceScreen(
 @Composable
 private fun SourceItem(
     source: BookSource,
+    isSelected: Boolean = false,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onExport: () -> Unit,
+    onSelectionChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
     
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        onClick = onSelectionChange?.let { callback ->
+            { callback(!isSelected) }
+        } ?: {}
     ) {
         Row(
             modifier = Modifier
@@ -459,10 +545,21 @@ private fun SourceItem(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Switch(
-                checked = source.enabled,
-                onCheckedChange = { onToggle() }
-            )
+            // 选择模式下的复选框
+            if (onSelectionChange != null) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { callback ->
+                        onSelectionChange(callback)
+                    },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            } else {
+                Switch(
+                    checked = source.enabled,
+                    onCheckedChange = { onToggle() }
+                )
+            }
             
             Spacer(modifier = Modifier.width(12.dp))
             
