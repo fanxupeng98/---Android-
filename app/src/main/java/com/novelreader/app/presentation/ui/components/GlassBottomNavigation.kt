@@ -1,6 +1,7 @@
 package com.novelreader.app.presentation.ui.components
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -156,19 +157,17 @@ private fun GlassNavBarItem(
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-
-    // 选中态动画
-    val animatedScale by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "scale"
-    )
+    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val circleShape = CircleShape
 
     val contentColor = if (isSelected) primaryColor else onSurfaceColor
     val icon = if (isSelected && item.selectedIcon != null) item.selectedIcon else item.icon
+    val bgAlpha by animateFloatAsState(
+        targetValue = if (isSelected) 0.4f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "bgAlpha"
+    )
+    val bgColor = if (bgAlpha > 0f) primaryContainer.copy(alpha = bgAlpha) else Color.Transparent
 
     Column(
         modifier = modifier
@@ -177,41 +176,23 @@ private fun GlassNavBarItem(
                 indication = null,
                 onClick = onClick
             )
-            .padding(vertical = 8.dp),
+            .background(color = bgColor, shape = CircleShape)
+            .padding(vertical = 8.dp, horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            // 选中态背景光晕
-            if (animatedScale > 0f) {
-                Box(
-                    modifier = Modifier
-                        .size((28 + animatedScale * 8).dp)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    primaryColor.copy(alpha = 0.25f * animatedScale),
-                                    Color.Transparent
-                                )
-                            ),
-                            shape = CircleShape
-                        )
-                )
-            }
-
-            Icon(
-                imageVector = icon,
-                contentDescription = item.label,
-                modifier = Modifier.size(26.dp),
-                tint = contentColor
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = item.label,
+            modifier = Modifier.size(26.dp),
+            tint = contentColor
+        )
 
         Spacer(modifier = Modifier.height(2.dp))
 
         Text(
             text = item.label,
-            style = MaterialTheme.typography.labelSmall.copy(
+            style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 11.sp,
                 lineHeight = 14.sp
             ),
