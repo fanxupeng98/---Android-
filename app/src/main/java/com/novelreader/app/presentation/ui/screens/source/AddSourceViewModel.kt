@@ -2,8 +2,6 @@ package com.novelreader.app.presentation.ui.screens.source
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.novelreader.app.data.remote.HtmlFetcher
 import com.novelreader.app.domain.model.BookSource
 import com.novelreader.app.domain.repository.BookSourceRepository
@@ -61,8 +59,6 @@ class AddSourceViewModel @Inject constructor(
 
     private val _importResult = MutableStateFlow(ImportResult())
     val importResult: StateFlow<ImportResult> = _importResult.asStateFlow()
-
-    private val gson = Gson()
 
     // ========== 表单更新 ==========
 
@@ -178,31 +174,10 @@ class AddSourceViewModel @Inject constructor(
     }
 
     /**
-     * 解析 JSON 并展示结果（支持单个和数组）
+     * 解析 JSON 并展示结果（支持单个和数组，自动兼容 snake_case / camelCase）
      */
     private suspend fun parseAndShowSources(json: String, sourceUrl: String?) {
-        val trimmed = json.trim()
-        val sources = try {
-            when {
-                // 数组格式 [...] 
-                trimmed.startsWith("[") -> {
-                    val type = object : TypeToken<List<BookSource>>() {}.type
-                    gson.fromJson<List<BookSource>>(trimmed, type)
-                }
-                // 单个对象格式 {...}
-                trimmed.startsWith("{") -> {
-                    val source = gson.fromJson(trimmed, BookSource::class.java)
-                    if (source != null && source.name.isNotBlank()) {
-                        listOf(source)
-                    } else {
-                        null
-                    }
-                }
-                else -> null
-            }
-        } catch (e: Exception) {
-            null
-        }
+        val sources = BookSource.fromJsonList(json)
 
         if (sources.isNullOrEmpty()) {
             _importResult.value = _importResult.value.copy(
